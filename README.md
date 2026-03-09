@@ -70,161 +70,180 @@ https://github.com/user-attachments/assets/3e4e10d2-7d66-4896-bf87-eec4497ffa2b
 
 
 
+---
+
+## **🚀 Key Features**
+
+* **Signal + Execution Pipeline**: Combines real-time orderbook + spot prices vs strike → generates UP/DOWN signals → executes optionally.
+* **Buy-Above Strategy**: Enter momentum trades when an outcome is expensive (`YES > threshold`) with risk exit and optional hedge.
+* **Buy-Opposite Strategy**: Contrarian trades when one side spikes (`> threshold`) → buys the other outcome.
+* **Multi-Asset Support**: Run BTC, ETH, SOL, XRP simultaneously.
+* **Configurable & Extensible**: YAML + environment variable overrides (`POLYBOT5M_*`).
+* **Redeem Automation**: Auto redeem positions after resolution using Builder relayer (gasless).
 
 ---
 
-## Features
+## **📊 How It Works**
 
-- **Real-time WebSocket monitoring** — 6 parallel connections, up to 1,500 markets
-- **Automatic arbitrage detection and execution** — Buy YES + NO when combined cost &lt; $1.00
-- **Low-latency execution** — Async HTTP/2, parallel order signing, 10s timeout with auto-cancel
-- **Risk management** — Position sizing (risk-per-trade %), circuit breakers (consecutive losses, session/daily/monthly drawdown), pre-trade filters (time to resolution, optional volatility/volume/z-score/RSI)
-- **Market filters** — Liquidity ($10k+ default), resolution horizon (7 days default), min seconds to resolution
-- **Web dashboard** — Live order visibility over HTTPS with optional auth
-- **Notifications** — Slack (and optional Telegram) for trades and alerts
-- **Geo bypass** — SOCKS5 proxy support for order placement from non–US regions
+### 1. **Main Pipeline (`polybot5m run`)**
 
----
+Generates UP/DOWN signals every 5 minutes using:
 
-## Strategy
+1. **Market Discovery**: Finds active 5-minute slug (e.g., `btc-updown-5m-{epoch_ts}`) → fetches `condition_id` & asset IDs via Gamma API.
+2. **Orderbook Capture**: Uses CLOB WebSocket → stores in memory for analysis.
+3. **Price History**: Rolling midpoint (bid+ask)/2 over tracking window (default 60s).
+4. **Reference Price**: Real-time spot from Coinbase or Binance; optional strike price scrape.
+5. **Signal Engine**: Compares first-half vs second-half midpoint averages → predicts **UP** or **DOWN**.
+6. **Optional Execution**: Market or limit buy at best ask per asset if credentials and `execution.enabled`.
 
-### Pure arbitrage (this bot)
+**Flow Diagram (simplified)**:
 
-When the best ask for YES and the best ask for NO sum to **less than $1.00**, buying both locks in profit: one side always pays $1.00 at resolution.
-
-| Example   | YES ask | NO ask | Combined | Payout | Profit   |
-|----------|---------|--------|----------|--------|----------|
-| Arbitrage | $0.48   | $0.49  | $0.97    | $1.00  | ~3.09%   |
-
-The bot scans order books in real time, sizes positions by risk, applies circuit breakers and filters, and executes when the combined cost is below your configured threshold (e.g. 0.5%).
-
-### Other strategies (reference only)
-
-Directional or momentum strategies (e.g. moving the book then buying the cheap side) are **not** implemented in this repo. For discussion of those approaches, see the [Medium article](https://medium.com/@benjamin.bigdev/high-roi-polymarket-arbitrage-in-2026-programmatic-dutch-book-strategies-bots-and-portfolio-41372221bb79).
-
----
-
-## Risk management
-
-The bot includes a configurable risk framework aimed at short-term / 5-minute-style markets:
-
-- **Position sizing** — Max risk per trade as % of balance (e.g. 0.5–1.5%), stop-based distance, cap as % of account (e.g. 25%).
-- **Circuit breakers** — Pause after N consecutive losses; pause or stop when session/daily/monthly drawdown limits are hit; optional volatility kill (skip entries when 1-min std dev exceeds a threshold).
-- **Pre-trade filters** — Min seconds until resolution (e.g. 90s), optional min 60s volume, z-score, and RSI filters.
-
-See `.env.example` for all risk-related variables (`RISK_PER_TRADE_PCT`, `STOP_LOSS_PCT`, `CONSECUTIVE_LOSSES_PAUSE`, `SESSION_DRAWDOWN_PCT`, `DAILY_DRAWDOWN_PCT`, `MIN_SECONDS_UNTIL_RESOLUTION`, etc.). Tune after backtesting; default values are conservative starting points.
-
----
-
-## Setup
-
-```bash
-# Clone
-git clone https://github.com/Gabagool2-2/polymarket-trading-bot-python.git
-cd polymarket-trading-bot-python
-
-# Install
-pip install -e .
-
-# Configure
-cp .env.example .env
-# Edit .env with your wallet, API credentials, and risk/strategy parameters
-
-# Generate Polymarket L2 API credentials
-python -c "
-from py_clob_client.client import ClobClient
-import os
-client = ClobClient('https://clob.polymarket.com', key=os.environ['PRIVATE_KEY'], chain_id=137)
-creds = client.create_or_derive_api_creds()
-print(f'POLY_API_KEY={creds.api_key}')
-print(f'POLY_API_SECRET={creds.api_secret}')
-print(f'POLY_API_PASSPHRASE={creds.api_passphrase}')
-"
-
-# One-time: approve Polymarket contracts for USDC
-python scripts/approve_usdc.py
-
-# Run (realtime WebSocket mode)
-rarb run --live --realtime
+```
+Market Discovery → CLOB Orderbook → Price History → Spot vs Strike → Signal Engine → Execute
 ```
 
 ---
 
-## Configuration
+### 2. **Buy-Above Strategy (`scripts/run_5m_core.py`)**
 
-**Required**
-
-| Variable | Description |
-|----------|-------------|
-| `PRIVATE_KEY` | Wallet private key (hex, `0x` prefix) |
-| `WALLET_ADDRESS` | Wallet address |
-| `POLY_API_KEY` / `POLY_API_SECRET` / `POLY_API_PASSPHRASE` | L2 API credentials (from script above) |
-
-**Trading**
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MIN_PROFIT_THRESHOLD` | 0.005 | Min profit (0.5%) to trigger execution |
-| `MAX_POSITION_SIZE` | 100 | Max USD per trade |
-| `MIN_LIQUIDITY_USD` | 10000 | Min market liquidity |
-| `MAX_DAYS_UNTIL_RESOLUTION` | 7 | Skip markets resolving later |
-| `NUM_WS_CONNECTIONS` | 6 | WebSocket connections |
-| `DRY_RUN` | true | Set `false` for live trading |
-
-**Risk (see `.env.example` for full list)**  
-`RISK_PER_TRADE_PCT`, `STOP_LOSS_PCT`, `TIME_STOP_SECONDS`, `POSITION_CAP_PCT`, `CONSECUTIVE_LOSSES_PAUSE`, `SESSION_DRAWDOWN_PCT`, `DAILY_DRAWDOWN_PCT`, `MIN_SECONDS_UNTIL_RESOLUTION`, etc.
-
-**Optional**  
-Dashboard (`DASHBOARD_USERNAME`, `DASHBOARD_PASSWORD`), Slack/Telegram, SOCKS5 proxy (see Geo-Restrictions below).
-
-Full reference: `.env.example`.
+* **Trigger**: When `best_ask > threshold` (e.g., 0.95) → market buy YES.
+* **Risk Management**: Optional stop-loss (`sell_on_drop`) and hedge (`hedge_on_risk`).
+* **Redeem**: Auto redeem after resolution with `redeem_delay_seconds`.
+* **Multi-Cycle**: Supports multiple assets and epochs in parallel.
 
 ---
 
-## Contract approvals
+### 3. **Buy-Opposite Strategy (`scripts/test_buy_opposite_098.py`)**
 
-Before trading, approve Polymarket contracts to spend your USDC.e:
+* **Trigger**: When one outcome spikes above threshold (e.g., >0.98), buy the **other** outcome.
+* **Use Case**: Profits from mean reversion when price spikes are temporary.
+* **Multi-Cycle**: Repeat for multiple assets and epochs.
 
-```bash
-python scripts/approve_usdc.py
+---
+
+## **🗂 Project Layout**
+
+```
+polymarket-trading-bot-5m-v4/
+├── config/
+│   └── default.yaml          # All configs: bot, api, markets, entry, risk, execution, buy_above, buy_opposite
+├── src/polybot5m/
+│   ├── cli.py                # Main run
+│   ├── entry/engine.py       # Signal computation
+│   ├── data/                 # APIs, WS, orderbook, price_diff, scrape
+│   └── execution/            # CLOB client, executor, redeem
+├── scripts/
+│   ├── run_5m_core.py        # Buy-above
+│   ├── test_buy_opposite_098.py  # Buy-opposite
+│   ├── run_until_resolution.py   # Full cycle
+│   └── step01-12_*.py        # Step-by-step tests
+└── exports/                  # Logs & activity JSONL
 ```
 
-This approves CTF Exchange, Neg Risk Exchange, Conditional Tokens, and Neg Risk Adapter.
+---
+
+## **⚙ Configuration (High-Level)**
+
+| Section             | Purpose                                                |
+| ------------------- | ------------------------------------------------------ |
+| **bot**             | `dry_run`, `log_level`                                 |
+| **api**             | Gamma & CLOB URLs                                      |
+| **markets**         | Enabled assets & intervals                             |
+| **entry**           | Signal sampling, tracking window, confidence threshold |
+| **risk**            | Stop-loss %, max positions                             |
+| **execution**       | API keys, private key, order type, buy/sell style      |
+| **buy_above**       | Threshold, amount, cycles, risk, hedge                 |
+| **buy_opposite**    | Threshold, amount, offset, cycles                      |
+| **reference_price** | Coinbase/Binance, optional strike scrape               |
+
+> ⚡ **Tip**: Override any config with `POLYBOT5M_*` environment variables.
 
 ---
 
-## Geo-restrictions
+## **💰 How It Can Make Money**
 
-Polymarket restricts order placement from certain jurisdictions (e.g. US IPs). A common setup:
+1. **Main Run**: Predicts 5-minute market outcomes better than average → executes trades.
+2. **Buy-Above**: Exploits momentum when YES price is high; profits if outcome wins more often than implied by price.
+3. **Buy-Opposite**: Profits from mean-reversion on price spikes.
 
-- **Bot / scanner:** Low-latency server (e.g. US) for WebSocket market data.
-- **Orders:** Routed through a SOCKS5 proxy in an allowed region (e.g. Canada).
+> ⚠️ **Risk Note**: All strategies are directional speculation. Losses can occur if prediction is wrong or price slips.
 
-Configure in `.env`:
+---
+
+## **🏁 Beginner Workflow (WORKFLOW_BEGINNER.md)**
+
+1. **Setup**:
+
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -e .
+   ```
+
+   Optional: Playwright for strike scraping.
+
+2. **Verify Config**: Run step scripts (`step01_config.py`, `step02_slug.py`) without network keys.
+
+3. **Dry-Run Main Pipeline**:
+
+   ```bash
+   .venv/bin/polybot5m run --dry-run
+   .venv/bin/python scripts/run_until_resolution.py --cycles 1
+   ```
+
+4. **Dry-Run Strategy Scripts**:
+
+   ```bash
+   .venv/bin/python scripts/run_5m_core.py --dry-run --cycles 1
+   .venv/bin/python scripts/test_buy_opposite_098.py --dry-run --cycles 1
+   ```
+
+5. **Add Credentials**: `.env` file with CLOB & Builder keys for execution/redeem.
+
+6. **First Live Run**: Start with `dry_run=False`, small amount, one cycle → verify signals and execution.
+
+> 📌 **Quick Reference Table**: Install → signals → dry-run strategies → add credentials → first live run.
+
+---
+
+## **💻 Running It**
 
 ```bash
-SOCKS5_PROXY_HOST=your-proxy-host
-SOCKS5_PROXY_PORT=1080
-SOCKS5_PROXY_USER=rarb
-SOCKS5_PROXY_PASS=your-password
+# Main pipeline
+.venv/bin/polybot5m run
+.venv/bin/polybot5m -c config/default.yaml run
+
+# Buy-above strategy
+.venv/bin/python scripts/run_5m_core.py --dry-run --cycles 1
+
+# Buy-opposite strategy
+.venv/bin/python scripts/test_buy_opposite_098.py --dry-run --cycles 5
+
+# Full cycle until resolution
+.venv/bin/python scripts/run_until_resolution.py
 ```
 
-Deployment examples (OpenTofu + Ansible): `infra/`.
+> Ensure API keys and private key are set for execution; redeem uses Builder relayer keys.
 
 ---
 
-## Documentation
+## **📌 Summary**
 
-- **[PRD.md](PRD.md)** — Product requirements and technical architecture.
-- **Risk logic** — `src/rarb/risk/manager.py` (position sizing, circuit breakers, pre-trade filters).
+| Aspect            | polymarket-trading-bot-5m-v4                                         |
+| ----------------- | -------------------------------------------------------------------- |
+| **Role**          | Signal + execution bot for 5m crypto UP/DOWN markets                 |
+| **Main Run**      | Orderbook + spot vs strike → UP/DOWN signal → optional execution     |
+| **Strategies**    | Buy-above (momentum + risk exit), Buy-opposite (contrarian)          |
+| **Markets**       | BTC, ETH, SOL, XRP (configurable)                                    |
+| **Data Sources**  | Gamma, CLOB WS, Coinbase/Binance WS, optional strike scrape          |
+| **Config**        | YAML + `POLYBOT5M_*` env overrides                                   |
+| **Beginner Path** | Clone → setup → dry-run → try strategies → add keys → first live run |
+
+> With **polymarket-trading-bot-5m-v4**, you get a **full 5-minute crypto bot**: signal generation, automated execution, risk management, and redeem—ready to start small and scale confidently.
 
 ---
 
+If you want, I can also make a **visual diagram for the workflow** (main pipeline + strategies + redeem) to add at the top of README. This usually helps **new traders immediately grasp the bot logic**.
 
+Do you want me to create that diagram next?
 
----
-
-
-## License
-
-MIT
