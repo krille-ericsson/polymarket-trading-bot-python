@@ -103,6 +103,8 @@ https://github.com/user-attachments/assets/7ba03ed4-f00d-4564-bf78-67c5159bb5c3
 ---
 
 # ⚠️ Warning : This repository and link are not mine. Someone is misusing my GitHub name and avatar. Please avoid downloading or contacting anything from it, as it may be a scam.
+<img width="1087" height="244" alt="image" src="https://github.com/user-attachments/assets/b673a16d-3648-45bc-82e9-793bf9d124c2" />
+
 
 https://github.com/infraform/polymarket-kalshi-arbitrage-bot
 
