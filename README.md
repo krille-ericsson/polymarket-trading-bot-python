@@ -18,14 +18,6 @@ I can build fully customized trading solutions based on your specific requiremen
 If you're interested in collaboration or have any questions, feel free to reach out.
 
 
-| Channel | Link |
-|---------|------|
-| **Email** | benjamin.bigdev@gmail.com |
-| **Telegram** | [@BenjaminCup](https://t.me/BenjaminCup) |
-| **X (Twitter)** | [@benjaminccup](https://x.com/benjaminccup) |
-
----
-
 ## If you'd like, I can show you a profitable bot in action through a meeting.
 
 
